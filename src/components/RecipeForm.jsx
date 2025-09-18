@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { TextField, Button, Box, Stack } from '@mui/material';
+import { addRecipe, updateRecipe, fetchRecipeById } from '../slices/recipesSlice';
 
 export default function RecipeForm() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const location = useLocation();
-  const { id } = useParams(); 
-  const stateRecipe = location.state?.recipeToEdit; 
+  const { id } = useParams();
+  const selectedRecipe = useSelector((state) => state.recipes.selectedRecipe);
+
+  const stateRecipe = location.state?.recipeToEdit;
 
   const [recipe, setRecipe] = useState({
     name: '',
@@ -22,36 +27,27 @@ export default function RecipeForm() {
       setRecipe(stateRecipe);
       setLoading(false);
     } else if (id) {
-      const localRecipes = JSON.parse(localStorage.getItem('recipes')) || [];
-      const found = localRecipes.find(r => r.id === parseInt(id));
-      if (found) {
-        setRecipe(found);
-        setLoading(false);
-      } else {
-        fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${id}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.meals?.[0]) {
-              const meal = data.meals[0];
-              setRecipe({
-                id: meal.idMeal,
-                name: meal.strMeal,
-                category: meal.strCategory,
-                image: meal.strMealThumb,
-                ingredients: Array.from({ length: 20 }, (_, i) => meal[`strIngredient${i + 1}`])
-                  .filter(Boolean)
-                  .join(', '),
-                instructions: meal.strInstructions,
-              });
-            }
-            setLoading(false);
-          });
-      }
+      dispatch(fetchRecipeById(parseInt(id))).then(() => setLoading(false));
     } else {
-      // New recipe
-      setLoading(false);
+      setLoading(false); 
     }
-  }, [stateRecipe, id]);
+  }, [dispatch, id, stateRecipe]);
+
+  useEffect(() => {
+    if (!stateRecipe && selectedRecipe) {
+      setRecipe({
+        id: selectedRecipe.id,
+        name: selectedRecipe.name || selectedRecipe.strMeal,
+        category: selectedRecipe.category || selectedRecipe.strCategory,
+        image: selectedRecipe.image || selectedRecipe.strMealThumb,
+        ingredients: selectedRecipe.ingredients ||
+          Array.from({ length: 20 }, (_, i) => selectedRecipe[`strIngredient${i + 1}`])
+               .filter(Boolean)
+               .join(', '),
+        instructions: selectedRecipe.instructions || selectedRecipe.strInstructions,
+      });
+    }
+  }, [selectedRecipe, stateRecipe]);
 
   const handleChange = (e) => {
     setRecipe({ ...recipe, [e.target.name]: e.target.value });
@@ -59,18 +55,11 @@ export default function RecipeForm() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    let savedRecipes = JSON.parse(localStorage.getItem('recipes')) || [];
-
     if (recipe.id) {
-      // Update existing recipe
-      savedRecipes = savedRecipes.map(r => r.id === recipe.id ? recipe : r);
+      dispatch(updateRecipe(recipe));
     } else {
-      // Add new recipe
-      recipe.id = Date.now();
-      savedRecipes.push(recipe);
+      dispatch(addRecipe(recipe));
     }
-
-    localStorage.setItem('recipes', JSON.stringify(savedRecipes));
     navigate('/');
   };
 
